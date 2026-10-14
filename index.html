@@ -1,0 +1,1189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Flash Cards</title>
+<style>
+  :root {
+    --bg: #fff7e8;
+    --card: #ffffff;
+    --ink: #2b2d42;
+    --muted: #7a7d96;
+    --good: #2bb673;
+    --bad: #ff7a59;
+    --accent: #5b6cff;
+    --read: #9775fa;
+    --star: #ffc93c;
+    --star-off: #e9e3d4;
+    --addA: #4dabf7;
+    --addB: #f783ac;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Comic Sans MS", "Segoe UI Rounded", "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    overflow: hidden;
+  }
+  header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 24px;
+  }
+  #stars { display: flex; gap: 4px; font-size: clamp(16px, 3.2vw, 34px); }
+  #stars span { color: var(--star-off); transition: color .3s, transform .3s; }
+  #stars span.on { color: var(--star); transform: scale(1.15); }
+  #levelBadge {
+    background: #fff; border-radius: 999px; padding: 8px 18px;
+    font-size: 20px; font-weight: 800; color: var(--accent);
+    box-shadow: 0 4px 0 #0000000f;
+    white-space: nowrap;
+  }
+  #levelBadge small { color: var(--muted); font-weight: 600; margin-left: 6px; }
+  @media (max-width: 700px) {
+    header { padding: 12px 16px; }
+    #levelBadge { font-size: 16px; padding: 6px 12px; }
+    #levelBadge small { display: none; }
+  }
+  .icon-btn {
+    border: none; background: transparent; font-size: 30px; cursor: pointer;
+    padding: 6px 10px; border-radius: 12px; color: var(--muted); flex-shrink: 0;
+  }
+  .icon-btn:active { background: #0001; }
+
+  main {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 0 16px 16px;
+  }
+  #card {
+    width: min(78vw, 62vh);
+    aspect-ratio: 4 / 5;
+    background: var(--card);
+    border-radius: 36px;
+    box-shadow: 0 14px 0 #0000000f, 0 20px 50px #0000001a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3vh;
+    border: 8px solid transparent;
+    transition: border-color .25s, transform .25s;
+  }
+  #card.good { border-color: var(--good); animation: pop .5s; }
+  #card.bad  { border-color: var(--bad);  animation: shake .45s; }
+  #card.enter { animation: slideIn .4s ease-out; }
+  #number {
+    font-size: min(44vw, 34vh);
+    line-height: 1;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  #number.sum    { font-size: min(19vw, 16vh); }
+  #number.reveal { font-size: min(13vw, 11vh); }
+  #number .op { color: var(--muted); }
+  #number .ch { display: inline-block; transition: color .15s, transform .15s; }
+  #number .ch.lit { color: var(--read); transform: translateY(-8%) scale(1.12); }
+  #dots {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: min(2vw, 1.4vh);
+  }
+  #dots i {
+    width: min(7vw, 5vh); aspect-ratio: 1; border-radius: 50%;
+    border: 3px dashed #d8d4ea;
+  }
+  #dots i.full { border: none; }
+  #dots.hidden { display: none; }
+  #pic { font-size: min(14vw, 11vh); line-height: 1; min-height: 0; }
+  #pic:empty { display: none; }
+
+  #message {
+    min-height: 1.3em;
+    font-size: clamp(22px, 4vh, 36px);
+    text-align: center;
+    font-weight: 700;
+  }
+  #heard {
+    min-height: 1.2em; margin-top: -14px;
+    font-size: 16px; color: var(--muted); text-align: center;
+  }
+  #heard.hidden { visibility: hidden; }
+  #mic {
+    border: none;
+    background: var(--accent);
+    color: white;
+    font: inherit;
+    font-size: clamp(22px, 3.6vh, 34px);
+    font-weight: 800;
+    padding: 18px 40px;
+    border-radius: 999px;
+    box-shadow: 0 8px 0 #3b48c9;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 12px;
+  }
+  #mic.hearing { background: var(--good); box-shadow: 0 8px 0 #1e8a56; }
+  #mic:active { transform: translateY(4px); box-shadow: 0 4px 0 #3b48c9; }
+  /* Make room for the tap buttons by shrinking the card a little while they're showing. */
+  body.choosing #card { width: min(70vw, 46vh); }
+  body.choosing main { gap: 14px; }
+  #choices { display: none; gap: 20px; justify-content: center; align-items: center; flex-direction: column; }
+  #choices.show { display: flex; }
+  #choices .row { display: flex; gap: 22px; }
+  #choices button {
+    width: clamp(70px, 11vh, 110px); aspect-ratio: 1; border-radius: 50%; border: 6px solid transparent;
+    font-size: clamp(30px, 5vh, 48px); cursor: pointer; box-shadow: 0 6px 0 #0002;
+    transition: transform .15s, border-color .15s;
+  }
+  #choices button.picked { border-color: var(--ink); transform: scale(1.12); }
+  #choices small { font-size: 16px; color: var(--muted); }
+  #mic.listening { background: var(--bad); box-shadow: 0 8px 0 #c8553b; animation: pulse 1s infinite; }
+  #mic:disabled { opacity: .5; }
+
+  #parent {
+    position: fixed; bottom: 12px; right: 12px;
+    display: flex; gap: 8px; opacity: .55;
+  }
+  #parent button {
+    border: 2px solid #0002; background: #fff; border-radius: 12px;
+    font: inherit; font-size: 18px; padding: 6px 12px; cursor: pointer;
+  }
+
+  #overlay {
+    position: fixed; inset: 0; background: var(--bg);
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 24px; text-align: center; padding: 24px;
+  }
+  #overlay.show { display: flex; }
+  #overlay h1 { font-size: clamp(36px, 7vh, 64px); margin: 0; }
+  #overlay p { font-size: clamp(20px, 3vh, 28px); margin: 0; color: var(--muted); max-width: 640px; }
+  #bigStars { font-size: clamp(36px, 7vh, 64px); color: var(--star); letter-spacing: 4px; }
+  .modes { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  .big-btn {
+    border: none; background: var(--good); color: white; font: inherit;
+    font-size: clamp(26px, 4vh, 40px); font-weight: 800; padding: 20px 44px;
+    border-radius: 32px; box-shadow: 0 8px 0 #1e8a56; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .big-btn small { font-size: 18px; font-weight: 600; opacity: .9; }
+  .big-btn.read { background: var(--read); box-shadow: 0 8px 0 #6f4fd6; }
+  .big-btn:active { transform: translateY(4px); box-shadow: 0 4px 0 #1e8a56; }
+  .big-btn.read:active { box-shadow: 0 4px 0 #6f4fd6; }
+
+  #settings {
+    position: fixed; top: 70px; right: 16px; background: #fff; border-radius: 18px;
+    box-shadow: 0 10px 40px #0002; padding: 18px 22px; display: none;
+    font-size: 20px; z-index: 5; min-width: 300px; max-width: calc(100vw - 32px);
+  }
+  #settings.show { display: block; }
+  #settings label { display: flex; align-items: center; gap: 10px; margin: 8px 0; cursor: pointer; }
+  #settings input { width: 22px; height: 22px; }
+  #settings .row { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
+  #settings .row button {
+    width: 40px; height: 40px; border-radius: 12px; border: 2px solid #0002; flex-shrink: 0;
+    background: #fff; font: inherit; font-size: 22px; font-weight: 800; cursor: pointer;
+  }
+  #settings .row strong { font-size: 17px; flex: 1; }
+  #settings .hint { font-size: 15px; color: var(--muted); margin: 0; }
+  #voiceSel {
+    flex: 1; min-width: 0; max-width: 260px; height: 40px; border-radius: 12px;
+    border: 2px solid #0002; font: inherit; font-size: 16px; padding: 0 8px; background: #fff;
+  }
+
+  #confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  #confetti b {
+    position: absolute; top: -20px; width: 12px; height: 18px; border-radius: 3px;
+    animation: fall 1.6s ease-in forwards;
+  }
+
+  @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.07)} 100%{transform:scale(1)} }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-14px)} 40%{transform:translateX(14px)} 60%{transform:translateX(-9px)} 80%{transform:translateX(9px)} }
+  @keyframes slideIn { from{transform:translateX(60px) rotate(4deg); opacity:0} to{transform:none; opacity:1} }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); opacity: .8; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div id="stars" aria-label="Score"></div>
+  <div id="levelBadge"></div>
+  <button class="icon-btn" id="gear" title="Settings">⚙️</button>
+</header>
+
+<div id="settings">
+  <label><input type="checkbox" id="optDots" checked> Allow counting dots</label>
+  <label><input type="checkbox" id="optHeard" checked> Show what the mic heard</label>
+  <div class="row">
+    <button data-mode="math" data-step="-1" title="Easier">−</button>
+    <strong id="lvlName-math"></strong>
+    <button data-mode="math" data-step="1" title="Harder">+</button>
+  </div>
+  <div class="row">
+    <button data-mode="read" data-step="-1" title="Easier">−</button>
+    <strong id="lvlName-read"></strong>
+    <button data-mode="read" data-step="1" title="Harder">+</button>
+  </div>
+  <p class="hint">Levels also change on their own as she plays.</p>
+  <div class="row">
+    <select id="voiceSel" title="Voice"></select>
+    <button id="voiceTest" title="Hear this voice">🔊</button>
+  </div>
+  <p class="hint">★ = the most natural voice found on this device.</p>
+</div>
+
+<main>
+  <div id="card">
+    <div id="number">1</div>
+    <div id="dots"></div>
+    <div id="pic"></div>
+  </div>
+  <div id="message"></div>
+  <div id="heard"></div>
+  <div id="choices"><div class="row"></div><small>Tap to hear it · tap again to pick it</small></div>
+  <button id="mic"><span>🎤</span><span id="micLabel">Say the answer!</span></button>
+</main>
+
+<div id="parent" title="Grown-up buttons">
+  <button id="pYes">✓ Right</button>
+  <button id="pNo">✗ Wrong</button>
+  <button id="pSkip">Skip ➜</button>
+</div>
+
+<div id="overlay" class="show">
+  <h1 id="ovTitle">Flash Cards</h1>
+  <div id="bigStars"></div>
+  <p id="ovText">Pick a game!</p>
+  <div class="modes">
+    <button class="big-btn" id="startMath">🔢 Numbers<small id="startMathLvl"></small></button>
+    <button class="big-btn read" id="startRead">🔤 Reading<small id="startReadLvl"></small></button>
+  </div>
+  <p id="ovNote" style="font-size:16px"></p>
+</div>
+
+<div id="confetti"></div>
+
+<script>
+const COLORS = ['#ff6b6b','#ffa94d','#ffd43b','#69db7c','#4dabf7','#9775fa','#f783ac','#38d9a9','#ff8787','#748ffc'];
+const NAMES = ['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
+const ROUND_LENGTH = 10;
+const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+// ---------- levels ----------
+// Each mode keeps its own saved level. Levels go from easiest to hardest.
+const MODES = {
+  math: {
+    icon: '🔢', name: 'Numbers', key: 'flashcards-level',
+    levels: [
+      { name: 'Numbers 1–5',           kind: 'number', max: 5,  dots: true  },
+      { name: 'Numbers 1–10',          kind: 'number', max: 10, dots: true  },
+      { name: 'Numbers 1–10, no dots', kind: 'number', max: 10, dots: false },
+      { name: 'Adding to 5',           kind: 'add',    max: 5,  dots: true  },
+      { name: 'Adding to 10',          kind: 'add',    max: 10, dots: true  },
+      { name: 'Adding to 10, no dots', kind: 'add',    max: 10, dots: false },
+    ],
+  },
+  read: {
+    icon: '🔤', name: 'Reading', key: 'flashcards-level-read',
+    levels: [
+      { name: 'Letters A–M',       kind: 'letter', items: UPPER.slice(0, 13) },
+      { name: 'Letters A–Z',       kind: 'letter', items: UPPER },
+      { name: 'Lowercase letters', kind: 'letter', items: UPPER.map(c => c.toLowerCase()) },
+      { name: 'First words', kind: 'word',
+        items: ['cat','hat','bat','mat','sat','can','man','ran','dad','dog','log','hot','pot','top','mom'] },
+      { name: 'Short words', kind: 'word',
+        items: ['sun','bug','cup','run','fun','bus','hug','pig','sit','big','pin','lip','bed','red','ten','hen','wet','fox','box','jam'] },
+      { name: 'Sight words', kind: 'word', sight: true,
+        items: ['the','and','is','it','see','can','we','go','me','my','to','you','like','look','up','no','yes','in','on','he'] },
+      { name: 'Blends', kind: 'word',
+        items: ['fish','ship','shop','chip','frog','stop','jump','milk','sock','duck','tree','play','sled','crab','swim','bath','hand','nest','fast','best'] },
+      { name: 'Tricky words', kind: 'word', sight: true,
+        items: ['said','was','they','have','come','here','where','there','are','from','of','one','two','does','want','put','could','would','who','your'] },
+    ],
+  },
+};
+
+// The "golden zone": move up quickly when it's easy, ease off when it's too hard.
+// Each answer scores 1 (first try), 0.6 (second try), 0.3 (needed a hint) or 0 (missed).
+const UP_STREAK = 4;       // first-try answers in a row to move up right away
+const UP_WINDOW = 6;       // ...or this many answers at the level averaging at least UP_AVG
+const UP_AVG = 0.8;
+const DOWN_WINDOW = 4;     // move down if the last few average below DOWN_AVG
+const DOWN_AVG = 0.45;
+const REVIEW_CHANCE = 0.2; // share of questions taken from the level below, for review
+const RETRY_AFTER = 3;     // a missed question comes back this many questions later
+const IDLE_MS = 9000;      // quiet this long -> a hint (reading) or the question again
+
+// ---------- hearing numbers ----------
+// Words that clearly mean a number. Hearing one of these that isn't the answer counts as wrong.
+const STRONG = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  tree: 3, sree: 3, fwee: 3, sicks: 6, sixth: 6, sevin: 7, eighth: 8, nein: 9, tin: 10,
+};
+// Sound-alikes Chrome often hears when a child says a number. These only ever count
+// toward the right answer (never as a wrong one), since many are everyday words.
+const LOOSE = {
+  won: 1, wan: 1, juan: 1, on: 1,
+  to: 2, too: 2, tu: 2, do: 2, true: 2, tube: 2,
+  free: 3, thee: 3, through: 3, threw: 3,
+  for: 4, fore: 4, floor: 4, pour: 4, poor: 4, foe: 4,
+  fife: 5, hive: 5, fight: 5, fine: 5, fly: 5, fire: 5,
+  sick: 6, sex: 6, sic: 6, sits: 6, sticks: 6, fix: 6, mix: 6, seeks: 6,
+  heaven: 7, sevens: 7, kevin: 7, sudden: 7,
+  ate: 8, hate: 8, ait: 8, eat: 8, aid: 8,
+  night: 9, nite: 9, mine: 9, line: 9, nice: 9, nina: 9, nime: 9,
+  then: 10, tan: 10, tent: 10, den: 10, pen: 10, hen: 10, tim: 10,
+};
+
+function words(text) {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+}
+
+// Small edit distance, capped at 2 (we only care whether it's 0, 1, or "more").
+function near(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return 2;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+// Did this transcript say the number n? Generous on purpose: young kids' speech is
+// often heard slightly wrong, so anything one letter away from the word counts too.
+function saysNumber(text, n) {
+  return words(text).some(w =>
+    +w === n || STRONG[w] === n || LOOSE[w] === n ||
+    (w.length >= 3 && near(w, NAMES[n]) <= 1));
+}
+
+// Numbers clearly said in this transcript (used to decide an answer was wrong).
+function strongNumbers(text) {
+  const found = new Set();
+  for (const w of words(text)) {
+    if (/^\d+$/.test(w) && +w >= 0 && +w <= 20) found.add(+w);
+    else if (w in STRONG) found.add(STRONG[w]);
+  }
+  return found;
+}
+
+// ---------- hearing letters ----------
+// How Chrome spells letter names. These clearly name a letter, so a different one counts as wrong.
+const LETTER_NAMES = {
+  bee: 'b', dee: 'd', gee: 'g', jay: 'j', kay: 'k', el: 'l', ell: 'l', em: 'm', pee: 'p', pea: 'p',
+  cue: 'q', queue: 'q', tee: 't', vee: 'v', zee: 'z', zed: 'z', ex: 'x', aitch: 'h', wye: 'y',
+};
+// Everyday words that sound like a letter name: only ever count toward the right answer.
+// Chrome is weakest at a lone letter from a child, so this list is deliberately long.
+const LETTER_LOOSE = {
+  a: ['hey', 'eh', 'ay', 'ayy', 'ey', 'hay', 'yay', 'aa', '8', 'eight', 'ate', 'hate'],
+  b: ['be', 'bea', 'bi', 'bee'], c: ['see', 'sea', 'si', 'cee', 'she'], d: ['de', 'deep', 'the', 'dee'],
+  e: ['ee', 'he', 'eat', 'eee'], f: ['ef', 'eff', 'if', 'off', 'f'], g: ['jee', 'ji', 'gee', 'jeep'],
+  h: ['age', 'each', 'ach', 'edge', 'itch', 'aitch', 'h'], i: ['eye', 'aye', 'hi', 'ai', 'high'],
+  j: ['jae', 'jay', 'jey'], k: ['okay', 'ok', 'cay', 'kaye', 'kay', 'k'], l: ['elle', 'al', 'el', 'ell', 'all', 'l'],
+  m: ['um', 'am', 'him', 'em', 'emm'], n: ['en', 'and', 'in', 'an', 'end', 'n'], o: ['oh', 'owe', '0', 'ohh', 'ow'],
+  p: ['pe', 'pee', 'pea', 'pete'], q: ['cute', 'kew', 'cue', 'queue', 'q'], r: ['are', 'our', 'ar', 'or', 'arr', 'r'],
+  s: ['es', 'yes', 'ass', 'ess', 'as'], t: ['tea', 'ti', 'tee'], u: ['you', 'yu', 'ewe', 'yo', 'hugh'],
+  v: ['ve', 'we', 'vee'], w: ['double', 'dub', 'dubya', 'w'], x: ['eggs', 'axe', 'ax', 'ex', 'ecks', 'x'],
+  y: ['why', 'wi', 'wye', 'wise'], z: ['zed', 'zee', 'z'],
+};
+
+function saysLetter(text, letter) {
+  const l = letter.toLowerCase();
+  return words(text).some(w => w === l || LETTER_NAMES[w] === l || LETTER_LOOSE[l].includes(w));
+}
+
+// Letters clearly said. "a" and "i" are left out because they're also ordinary words.
+function strongLetters(text) {
+  const found = new Set();
+  for (const w of words(text)) {
+    if (/^[b-hj-z]$/.test(w)) found.add(w);
+    else if (w in LETTER_NAMES) found.add(LETTER_NAMES[w]);
+  }
+  return found;
+}
+
+// ---------- hearing words ----------
+// Sound-alike spellings Chrome may return for a word she reads correctly.
+const WORD_ALIKE = {
+  sun: ['son'], red: ['read'], ten: ['10'], two: ['2', 'to', 'too'], one: ['1', 'won'],
+  see: ['sea', 'c'], no: ['know'], you: ['u'], here: ['hear'], there: ['their'],
+  where: ['wear', 'ware'], we: ['wee'], to: ['too', 'two', '2'], mom: ['mum', 'mam', 'mama', 'mommy'],
+  dad: ['daddy'], cat: ['kat'], mat: ['matt'], would: ['wood'], in: ['inn'], bus: ['buss'],
+  and: ['n'], he: ['hee'], my: ['mi', 'mai'], me: ['mee'], yes: ['yeah', 'yep'], tree: ['three', '3'],
+  your: ['you\'re', 'yore'], who: ['hoo'], hot: ['hott'], bat: ['batt'],
+};
+const FILLERS = new Set(['um', 'uh', 'uhh', 'umm', 'hmm', 'mm', 'er', 'erm', 'ah', 'oh', 'huh', 'hm']);
+
+function saysWord(text, word) {
+  return words(text).some(w =>
+    w === word || w === word + 's' || w === word + 'es' ||
+    (WORD_ALIKE[word] || []).includes(w) ||
+    (word.length >= 5 && near(w, word) <= 1));
+}
+
+// A short reply that isn't just "um" is a real attempt at reading the word.
+function wordAttempt(text) {
+  const real = words(text).filter(w => !FILLERS.has(w));
+  return real.length >= 1 && real.length <= 3;
+}
+
+// ---------- sounds for hints ----------
+const LETTER_HELP = {
+  a: ['ah', 'apple', '🍎'], b: ['buh', 'ball', '⚽'], c: ['kuh', 'cat', '🐱'], d: ['duh', 'dog', '🐶'],
+  e: ['eh', 'egg', '🥚'], f: ['fff', 'fish', '🐟'], g: ['guh', 'goat', '🐐'], h: ['huh', 'hat', '🎩'],
+  i: ['ih', 'insect', '🐜'], j: ['juh', 'juice', '🧃'], k: ['kuh', 'kite', '🪁'], l: ['lll', 'lion', '🦁'],
+  m: ['mmm', 'moon', '🌙'], n: ['nnn', 'nose', '👃'], o: ['aw', 'octopus', '🐙'], p: ['puh', 'pig', '🐷'],
+  q: ['kwuh', 'queen', '👑'], r: ['rrr', 'rabbit', '🐰'], s: ['sss', 'sun', '☀️'], t: ['tuh', 'tiger', '🐯'],
+  u: ['uh', 'umbrella', '☂️'], v: ['vvv', 'van', '🚐'], w: ['wuh', 'watermelon', '🍉'], x: ['ks', 'fox', '🦊'],
+  y: ['yuh', 'yo-yo', '🪀'], z: ['zzz', 'zebra', '🦓'],
+};
+const DIGRAPHS = { sh: 'shh', ch: 'chuh', th: 'thh', ck: 'kuh', ll: 'lll', ss: 'sss', ee: 'eee', oo: 'ooo', ay: 'ay', ng: 'ng', wh: 'wuh', qu: 'kwuh' };
+// Pictures shown as a reward after reading a word.
+const WORD_PICS = {
+  cat: '🐱', hat: '🎩', bat: '🦇', dog: '🐶', hot: '🔥', mom: '👩', dad: '👨', man: '👨', top: '🔝',
+  sun: '☀️', bug: '🐛', cup: '🥤', run: '🏃', fun: '🎉', bus: '🚌', hug: '🤗', pig: '🐷', big: '🐘',
+  pin: '📌', lip: '👄', bed: '🛏️', red: '🟥', ten: '🔟', hen: '🐔', wet: '💧', fox: '🦊', box: '📦', jam: '🍓',
+  fish: '🐟', ship: '🚢', shop: '🛒', chip: '🍟', frog: '🐸', stop: '🛑', jump: '🦘', milk: '🥛', sock: '🧦',
+  duck: '🦆', tree: '🌳', play: '🧸', sled: '🛷', crab: '🦀', swim: '🏊', bath: '🛁', hand: '✋', nest: '🪺',
+  fast: '🏎️', best: '🏆', see: '👀', look: '👀', yes: '👍', no: '🙅', up: '⬆️', one: '1️⃣', two: '2️⃣',
+};
+
+function chunks(word) {
+  const out = [];
+  for (let i = 0; i < word.length;) {
+    const two = word.slice(i, i + 2);
+    if (DIGRAPHS[two]) { out.push(two); i += 2; } else { out.push(word[i]); i++; }
+  }
+  return out;
+}
+const soundOf = c => DIGRAPHS[c] || LETTER_HELP[c][0];
+
+// ---------- state ----------
+const $ = id => document.getElementById(id);
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+let mode = 'math';
+let round = [], q = null, score = 0, misses = 0, hinted = false, gameActive = false;
+let levels = { math: loadLevel('math'), read: loadLevel('read') };
+let streak = 0, levelScores = [], asked = 0, retryQueue = [], recentKeys = [];
+let idleTimer = null, idleCount = 0, listenFrom = 0;
+
+// What the game is doing right now:
+//   'prompt'   - asking the question out loud (a right answer still counts: kids blurt it out)
+//   'listen'   - waiting for her answer
+//   'feedback' - cheering, correcting, hinting, or announcing a level (ignore the mic)
+//   'idle'     - not playing
+let phase = 'idle';
+
+// The mic stays on for the whole session: Chrome asks for permission each time
+// recognition starts on a local file, so we start it once and keep it running.
+let rec = null, micOn = false, micBlocked = false, quietUntil = 0, lastStart = 0;
+
+// We act on in-progress ("interim") results so answers register right away instead
+// of waiting for Chrome to decide the phrase is finished, which gets slow in a long session.
+let consumed = -1;      // results at or below this index have been handled
+let skipWords = {};     // per result: leading words heard while the app was talking
+let wrongTimer = null;  // a wrong answer gets a moment to turn into the right one
+
+// Things the app itself says; if the mic picks up our own voice, never count it as a wrong answer.
+const APP_PHRASES = /job|awesome|super|way to go|can you|this one|that one|what number|is this|what is|plus|not quite|try again|another|catch|stars|great work|good try|level|easier|adding|letter|word|sound|together|says|starts/;
+// App sentences that contain an answer; never let these count as a right answer either.
+const FEEDBACK_PHRASES = /that'?s|that is|that one|that says|this word is|plus \w+ (is|equals)|makes the sound/;
+// Our questions, removed before matching so "What word is this?" can't answer the word "is".
+const PROMPT_TEXT = /what (number|letter|word) is( this)?|\b(number|letter|word) is this\b|\bis this\b|what is \w+ plus \w+/g;
+const stripPrompts = t => t.toLowerCase().replace(PROMPT_TEXT, ' ');
+
+const levelList = () => MODES[mode].levels;
+const level = () => levels[mode];
+
+// ---------- saved levels ----------
+function loadLevel(m) {
+  try {
+    const n = parseInt(localStorage.getItem(MODES[m].key), 10);
+    if (n >= 0 && n < MODES[m].levels.length) return n;
+  } catch (_) {}
+  return 0;
+}
+
+function setLevel(m, n) {
+  levels[m] = Math.max(0, Math.min(MODES[m].levels.length - 1, n));
+  if (m === mode) { streak = 0; levelScores = []; }
+  try { localStorage.setItem(MODES[m].key, String(levels[m])); } catch (_) {}
+  renderLevel();
+}
+
+function renderLevel() {
+  const L = levelList()[level()];
+  $('levelBadge').innerHTML = `${MODES[mode].icon} Level ${level() + 1}<small></small>`;
+  $('levelBadge').querySelector('small').textContent = L.name;
+  $('levelBadge').style.color = mode === 'read' ? 'var(--read)' : 'var(--accent)';
+  for (const m of ['math', 'read']) {
+    const n = levels[m];
+    $('lvlName-' + m).textContent = `${MODES[m].icon} Level ${n + 1}: ${MODES[m].levels[n].name}`;
+  }
+  $('startMathLvl').textContent = `Level ${levels.math + 1}`;
+  $('startReadLvl').textContent = `Level ${levels.read + 1}`;
+}
+
+// ---------- speaking ----------
+// Prefer natural-sounding voices; the built-in Windows ones (David, Zira, Mark) sound robotic.
+function voiceScore(v) {
+  const n = v.name;
+  if (/natural/i.test(n)) return 100;                 // Edge's neural voices
+  if (/online/i.test(n)) return 90;
+  if (/google us english/i.test(n)) return 80;
+  if (/google uk english female/i.test(n)) return 70;
+  if (/google/i.test(n)) return 60;
+  if (/samantha|ava|allison|susan/i.test(n)) return 50;
+  if (/zira/i.test(n)) return 6;
+  if (/david|mark/i.test(n)) return 5;
+  return v.lang === 'en-US' ? 20 : 10;
+}
+
+let voices = [], voice = null;
+function loadVoices() {
+  voices = speechSynthesis.getVoices()
+    .filter(v => v.lang.startsWith('en'))
+    .sort((a, b) => voiceScore(b) - voiceScore(a));
+  let saved = null;
+  try { saved = localStorage.getItem('flashcards-voice'); } catch (_) {}
+  voice = voices.find(v => v.voiceURI === saved) || voices[0] || null;
+  $('voiceSel').innerHTML = '';
+  voices.forEach((v, i) => {
+    const o = document.createElement('option');
+    o.value = v.voiceURI;
+    o.textContent = (i === 0 ? '★ ' : '') + v.name.replace(/^(Microsoft|Google)\s+/, '$1 ');
+    $('voiceSel').appendChild(o);
+  });
+  if (voice) $('voiceSel').value = voice.voiceURI;
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+
+function say(text) {
+  return new Promise(resolve => {
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      quietUntil = Date.now() + 900;
+      resolve();
+    };
+    const u = new SpeechSynthesisUtterance(text);
+    if (voice) u.voice = voice;
+    const natural = voice && voiceScore(voice) >= 60;
+    u.rate = natural ? 0.95 : 0.9;
+    u.pitch = natural ? 1.05 : 1.1;
+    u.onend = u.onerror = done;
+    // Chrome can drop an utterance spoken right after cancel(), so give it a beat.
+    const busyTalking = speechSynthesis.speaking || speechSynthesis.pending;
+    if (busyTalking) speechSynthesis.cancel();
+    setTimeout(() => speechSynthesis.speak(u), busyTalking ? 80 : 0);
+    setTimeout(done, 2500 + text.length * 90); // safety net if onend never fires
+  });
+}
+
+const pause = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- listening ----------
+function showHeard(text) {
+  $('heard').textContent = text ? '🎧 heard: ' + text : '';
+}
+
+function updateMic() {
+  $('mic').classList.toggle('listening', micOn);
+  $('micLabel').textContent = micOn ? "I'm listening…" : 'Tap to turn on the mic';
+}
+
+// From a web address Chrome remembers the mic permission, so each question gets a short,
+// fresh listening session (much better at catching a single word) and the mic is off while
+// the app talks. From a local file every new session asks permission again, so there we
+// keep one long session running instead.
+const SHORT_SESSIONS = location.protocol === 'https:' || location.hostname === 'localhost';
+let micStarting = false;
+
+const wantsMic = () => gameActive && (phase === 'prompt' || phase === 'listen');
+function ensureMic() { if (wantsMic()) startMic(); }
+function pauseMic() {
+  if (SHORT_SESSIONS && rec && (micOn || micStarting)) { try { rec.abort(); } catch (_) {} }
+}
+
+function startMic() {
+  if (!SR || micOn || micStarting) return;
+  micBlocked = false;
+  micStarting = true;
+  rec = new SR();
+  rec.lang = 'en-US';
+  rec.interimResults = true;
+  rec.maxAlternatives = 5;
+  rec.continuous = !SHORT_SESSIONS;
+
+  rec.onstart = () => {
+    micStarting = false; micOn = true; lastStart = Date.now(); consumed = -1; skipWords = {};
+    updateMic();
+  };
+  // Show when the mic is actually picking up sound, so it's obvious whether it can hear her.
+  rec.onsoundstart = () => { $('mic').classList.add('hearing'); $('micLabel').textContent = 'I hear you…'; };
+  rec.onsoundend = () => { $('mic').classList.remove('hearing'); updateMic(); };
+  rec.onresult = e => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (i <= consumed) continue;
+      const r = e.results[i];
+      const alts = [...r].map(a => a.transcript.trim());
+      if (!canHearAnswer()) {
+        skipWords[i] = alts[0].split(/\s+/).length;
+        if (r.isFinal) consumed = i;
+        continue;
+      }
+      const fresh = alts.map(t => t.split(/\s+/).slice(skipWords[i] || 0).join(' '));
+      if (handleHeard(fresh, r.isFinal, i) || r.isFinal) consumed = i;
+    }
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      micBlocked = true;
+      setMessage('Please allow the microphone, then tap the button.');
+    } else if (e.error === 'network') {
+      micBlocked = true;
+      setMessage('Speech needs the internet. Check the Wi-Fi, then tap the button.');
+    }
+  };
+  rec.onend = () => {
+    micStarting = false;
+    micOn = false;
+    $('mic').classList.remove('hearing');
+    updateMic();
+    if (!gameActive || micBlocked) return;
+    // A session that ended almost immediately means something's wrong; back off a little.
+    const delay = Date.now() - lastStart < 1000 ? 1000 : SHORT_SESSIONS ? 50 : 200;
+    // Short sessions restart only while waiting for her answer; the long one always restarts.
+    if (SHORT_SESSIONS) setTimeout(ensureMic, delay);
+    else setTimeout(startMic, delay);
+  };
+  try { rec.start(); } catch (_) { micStarting = false; }
+}
+
+// Chrome ends a listening session about once a minute and, for a local file, asks for the
+// mic again when it restarts. Holding the microphone open for the whole page may let
+// those restarts reuse the first "Allow" instead of asking again.
+let micStream = null;
+async function holdMic() {
+  if (micStream || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  try { micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true } }); } catch (_) {}
+}
+
+// A right answer counts while the question is being asked (it never contains its own
+// answer) or once the app has finished any feedback or hint.
+function canHearAnswer() {
+  return gameActive && (phase === 'prompt' || (phase === 'listen' && Date.now() >= listenFrom));
+}
+// A wrong answer only counts once the app has finished talking.
+function canHearWrong() { return gameActive && phase === 'listen' && Date.now() >= quietUntil; }
+
+function isRight(text, x) {
+  if (x.kind === 'letter') return saysLetter(text, x.answer);
+  if (x.kind === 'word') return saysWord(text, x.answer);
+  return saysNumber(text, x.answer);
+}
+
+// The words in a reply, minus "um" and "uh".
+const realWords = text => words(text).filter(w => !FILLERS.has(w));
+
+function isClearlyWrong(text, x) {
+  if (x.kind === 'word') return wordAttempt(text);
+  const real = realWords(text);
+  // A one-word reply that sounds like any letter or number ("A", "hey", "for") is her answer.
+  const lone = real.length === 1 ? real[0] : null;
+  if (x.kind === 'letter') {
+    return strongLetters(text).size > 0 ||
+      (lone !== null && (/^[a-z]$/.test(lone) || Object.values(LETTER_LOOSE).some(list => list.includes(lone))));
+  }
+  return strongNumbers(text).size > 0 || (lone !== null && lone in LOOSE);
+}
+
+// Returns true once the result has been acted on.
+function handleHeard(alts, isFinal, i) {
+  if (!alts[0]) return false;
+  showHeard(alts[0]);
+  const usable = alts.filter(t => !FEEDBACK_PHRASES.test(t.toLowerCase())).map(stripPrompts);
+  if (usable.some(t => isRight(t, q))) { correct(); return true; }
+
+  // Only the top guess is used to decide it was wrong; the other guesses are often noise.
+  if (!canHearWrong() || FEEDBACK_PHRASES.test(alts[0].toLowerCase())) return false;
+  const top = stripPrompts(alts[0]);
+  if (APP_PHRASES.test(top)) return false;
+  // Anything short and finished that isn't right still counts as a try, so she's never left hanging.
+  const shortReply = isFinal && realWords(top).length >= 1 && realWords(top).length <= 2;
+  if (!isClearlyWrong(top, q) && !shortReply) return false; // keep listening
+  if (isFinal) { wrong(); return true; }
+  clearTimeout(wrongTimer);
+  wrongTimer = setTimeout(() => {
+    if (canHearWrong() && i > consumed) { consumed = i; wrong(); }
+  }, q.kind === 'word' ? 1500 : 1200);
+  return false;
+}
+
+// ---------- questions ----------
+const rand = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const keyOf = x => x.kind + ':' + x.answer;
+
+function generate(levelIndex) {
+  const L = levelList()[levelIndex];
+  if (L.kind === 'number') return { kind: 'number', answer: rand(1, L.max), dots: L.dots };
+  if (L.kind === 'add') {
+    const sum = rand(2, L.max);
+    const a = rand(1, sum - 1);
+    return { kind: 'add', a, b: sum - a, answer: sum, dots: L.dots };
+  }
+  return { kind: L.kind, answer: pick(L.items), sight: !!L.sight };
+}
+
+function makeQuestion() {
+  asked++;
+  // Something she missed earlier comes back for another go.
+  const due = retryQueue.findIndex(r => r.due <= asked && (!q || r.q.answer !== q.answer));
+  if (due >= 0) return { ...retryQueue.splice(due, 1)[0].q };
+
+  for (let tries = 0; tries < 30; tries++) {
+    const lv = level() > 0 && Math.random() < REVIEW_CHANCE ? level() - 1 : level();
+    const next = generate(lv);
+    // Never the same answer twice in a row, and avoid anything from the last few cards.
+    if (q && next.answer === q.answer) continue;
+    if (recentKeys.includes(keyOf(next)) && tries < 25) continue;
+    return next;
+  }
+  return generate(level());
+}
+
+function promptFor(x) {
+  if (x.kind === 'add') return `What is ${NAMES[x.a]} plus ${NAMES[x.b]}?`;
+  if (x.kind === 'letter') return 'What letter is this?';
+  if (x.kind === 'word') return 'What word is this?';
+  return 'What number is this?';
+}
+
+function answerSentence(x) {
+  if (x.kind === 'add') return `${NAMES[x.a]} plus ${NAMES[x.b]} is ${NAMES[x.answer]}`;
+  if (x.kind === 'letter') return `That's the letter ${x.answer.toUpperCase()}`;
+  if (x.kind === 'word') return `That says ${x.answer}`;
+  return `That's ${NAMES[x.answer]}`;
+}
+
+function revealSentence(x) {
+  if (x.kind === 'add') return answerSentence(x);
+  if (x.kind === 'letter') return `That one is the letter ${x.answer.toUpperCase()}`;
+  if (x.kind === 'word') return `This word is ${x.answer}`;
+  return `That one is ${NAMES[x.answer]}`;
+}
+
+// ---------- game ----------
+function renderStars() {
+  $('stars').innerHTML = Array.from({ length: ROUND_LENGTH },
+    (_, i) => `<span class="${round[i] === 'star' ? 'on' : ''}">★</span>`).join('');
+}
+
+function setMessage(text, color) {
+  $('message').textContent = text;
+  $('message').style.color = color || 'var(--ink)';
+}
+
+function showDots(x) {
+  const show = (x.kind === 'number' || x.kind === 'add') && x.dots && $('optDots').checked;
+  $('dots').classList.toggle('hidden', !show);
+  if (!show) return;
+  $('dots').innerHTML = Array.from({ length: 10 }, (_, i) => {
+    if (x.kind === 'number') return i < x.answer ? `<i class="full" style="background:${COLORS[x.answer - 1]}"></i>` : '<i></i>';
+    if (i < x.a) return '<i class="full" style="background:var(--addA)"></i>';
+    if (i < x.answer) return '<i class="full" style="background:var(--addB)"></i>';
+    return '<i></i>';
+  }).join('');
+}
+
+function renderFace(x) {
+  const num = $('number');
+  num.style.fontSize = '';
+  num.style.color = '';
+  if (x.kind === 'number') {
+    num.className = '';
+    num.textContent = x.answer;
+    num.style.color = COLORS[x.answer - 1];
+  } else if (x.kind === 'add') {
+    num.className = 'sum';
+    num.innerHTML = `<span style="color:var(--addA)">${x.a}</span> <span class="op">+</span> <span style="color:var(--addB)">${x.b}</span>`;
+  } else if (x.kind === 'letter') {
+    num.className = '';
+    num.textContent = x.answer;
+    num.style.color = COLORS[x.answer.toUpperCase().charCodeAt(0) % COLORS.length];
+  } else {
+    num.className = 'word';
+    num.innerHTML = chunks(x.answer).map(c => `<span class="ch">${c}</span>`).join('');
+    // Fit the word on the card: roughly 0.6em per letter.
+    num.style.fontSize = `min(30vh, calc(min(78vw, 62vh) * 0.82 / ${0.62 * Math.max(x.answer.length, 2)}))`;
+  }
+}
+
+function showCard() {
+  misses = 0;
+  hinted = false;
+  idleCount = 0;
+  clearTimeout(idleTimer);
+  clearTimeout(wrongTimer);
+  hideChoices();
+  recentKeys = [...recentKeys.slice(-3), keyOf(q)];
+  const card = $('card');
+  card.className = '';
+  void card.offsetWidth;
+  card.classList.add('enter');
+  renderFace(q);
+  showDots(q);
+  $('pic').textContent = '';
+  setMessage(q.kind === 'add' ? `What is ${q.a} + ${q.b}?` : promptFor(q));
+  showHeard('');
+  askAloud();
+}
+
+function askAloud() {
+  phase = 'prompt';
+  ensureMic();
+  const asking = q;
+  say(promptFor(q)).then(() => { if (phase === 'prompt' && q === asking) toListen(asking, 0); });
+}
+
+// Start listening for an answer. After feedback or a hint, wait a moment so the
+// tail end of the app's own voice can't be taken as her answer.
+function toListen(forQ, guardMs) {
+  if (!gameActive || q !== forQ) return;
+  phase = 'listen';
+  listenFrom = Date.now() + guardMs;
+  ensureMic();
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => onIdle(forQ), IDLE_MS);
+  // If the mic hasn't caught a right answer in a few seconds, offer the tap buttons.
+  clearTimeout(choiceTimer);
+  choiceTimer = setTimeout(() => { if (q === forQ && wantsMic()) showChoices(); }, CHOICES_AFTER_MS);
+}
+
+// ---------- tap buttons (backup when the mic misses) ----------
+// Each button says an answer out loud when tapped; tapping the same one again picks it.
+// She still has to recognize the answer by its name, without needing the mic.
+const CHOICES_AFTER_MS = 4000;
+let choiceTimer = null, choices = [], picked = -1;
+
+const spokenName = x => (x.kind === 'number' || x.kind === 'add') ? NAMES[x.answer]
+  : x.kind === 'letter' ? x.answer.toUpperCase() + '.' : x.answer;
+
+function distractors(x) {
+  if (x.kind === 'number' || x.kind === 'add') {
+    const lo = x.kind === 'add' ? 2 : 1;
+    return Array.from({ length: 11 - lo }, (_, i) => i + lo).filter(n => n !== x.answer);
+  }
+  // Letters and words come from the same level the card came from.
+  const L = MODES.read.levels.find(l => l.items.includes(x.answer)) || MODES.read.levels[0];
+  return L.items.filter(a => a !== x.answer);
+}
+
+function showChoices() {
+  if ($('choices').classList.contains('show')) return;
+  const others = distractors(q).sort(() => Math.random() - 0.5).slice(0, 2);
+  choices = [q.answer, ...others].sort(() => Math.random() - 0.5);
+  picked = -1;
+  const colors = ['#ffd43b', '#69db7c', '#4dabf7'];
+  const row = $('choices').querySelector('.row');
+  row.innerHTML = '';
+  choices.forEach((_, i) => {
+    const b = document.createElement('button');
+    b.textContent = '🔊';
+    b.style.background = colors[i];
+    b.onclick = () => tapChoice(i);
+    row.appendChild(b);
+  });
+  $('choices').classList.add('show');
+  document.body.classList.add('choosing');
+}
+
+function hideChoices() {
+  clearTimeout(choiceTimer);
+  $('choices').classList.remove('show');
+  document.body.classList.remove('choosing');
+  picked = -1;
+}
+
+async function tapChoice(i) {
+  if (!wantsMic()) return;
+  const buttons = $('choices').querySelectorAll('button');
+  if (picked !== i) {
+    // First tap: say it out loud. The mic pauses so it can't hear the app say the answer.
+    picked = i;
+    buttons.forEach((b, k) => b.classList.toggle('picked', k === i));
+    const forQ = q;
+    phase = 'feedback';
+    pauseMic();
+    clearTimeout(idleTimer);
+    await say(spokenName({ ...q, answer: choices[i] }));
+    if (q === forQ && phase === 'feedback') toListen(forQ, 900);
+    return;
+  }
+  // Second tap on the same button: that's her answer.
+  buttons.forEach(b => b.classList.remove('picked'));
+  picked = -1;
+  if (choices[i] === q.answer) correct(); else wrong();
+}
+
+async function onIdle(forQ) {
+  if (phase !== 'listen' || q !== forQ || idleCount >= 3) return;
+  idleCount++;
+  if ((q.kind === 'letter' || q.kind === 'word') && !hinted) await giveHint();
+  else askAloud();
+}
+
+function revealAnswer() {
+  if (q.kind === 'add') {
+    const num = $('number');
+    num.className = 'reveal';
+    num.innerHTML = `<span style="color:var(--addA)">${q.a}</span> <span class="op">+</span> <span style="color:var(--addB)">${q.b}</span> <span class="op">=</span> <span style="color:var(--good)">${q.answer}</span>`;
+  }
+  if (q.kind === 'word' && WORD_PICS[q.answer]) $('pic').textContent = WORD_PICS[q.answer];
+  if (q.kind === 'letter') $('pic').textContent = LETTER_HELP[q.answer.toLowerCase()][2];
+}
+
+// Help without giving the answer away: the letter's sound, or the word sounded out.
+async function giveHint() {
+  const forQ = q;
+  hinted = true;
+  phase = 'feedback';
+  pauseMic();
+  clearTimeout(idleTimer);
+  if (q.kind === 'letter') {
+    const [sound, example, pic] = LETTER_HELP[q.answer.toLowerCase()];
+    $('pic').textContent = pic;
+    setMessage(`Hint: it makes the sound "${sound}", like ${example}!`, 'var(--read)');
+    await say(`Here's a hint. This letter makes the sound, ${sound}. Like ${example}.`);
+  } else if (q.sight) {
+    const first = chunks(q.answer)[0];
+    lightChunk(0);
+    setMessage(`Hint: it starts with "${soundOf(first)}"…`, 'var(--read)');
+    await say(`Here's a hint. It starts with, ${soundOf(first)}.`);
+    lightChunk(-1);
+  } else {
+    setMessage("Let's sound it out together!", 'var(--read)');
+    await say("Let's sound it out.");
+    const parts = chunks(q.answer);
+    for (let i = 0; i < parts.length && q === forQ; i++) {
+      lightChunk(i);
+      await say(soundOf(parts[i]));
+      await pause(250);
+    }
+    lightChunk(-1);
+    if (q !== forQ) return;
+    setMessage('Now put the sounds together!', 'var(--read)');
+    await say('Now put the sounds together!');
+  }
+  if (q === forQ && phase === 'feedback') toListen(forQ, 900);
+}
+
+function lightChunk(n) {
+  document.querySelectorAll('#number .ch').forEach((el, i) => el.classList.toggle('lit', i === n));
+}
+
+const isReading = x => x.kind === 'letter' || x.kind === 'word';
+
+async function correct() {
+  phase = 'feedback';
+  pauseMic();
+  hideChoices();
+  clearTimeout(wrongTimer);
+  clearTimeout(idleTimer);
+  score++;
+  round.push('star');
+  renderStars();
+  revealAnswer();
+  lightChunk(-1);
+  $('card').className = 'good';
+  confetti();
+  const cheers = ['Great job!', 'You got it!', 'Awesome!', 'Super!', 'Way to go!', 'Yes!'];
+  const cheer = pick(cheers);
+  const said = answerSentence(q);
+  setMessage(`${cheer} ${said[0].toUpperCase() + said.slice(1)}! ⭐`, 'var(--good)');
+  await say(`${cheer} ${said}!`);
+  await next(hinted ? 0.3 : misses === 0 ? 1 : 0.6);
+}
+
+async function wrong() {
+  phase = 'feedback';
+  pauseMic();
+  clearTimeout(wrongTimer);
+  clearTimeout(idleTimer);
+  misses++;
+  showChoices(); // after a miss, the tap buttons are there as a backup right away
+  $('card').className = '';
+  void $('card').offsetWidth;
+  $('card').className = 'bad';
+  // Numbers: two tries. Reading: try again, then a hint, then move on.
+  const outOfTries = isReading(q) ? misses >= 3 || (misses >= 2 && hinted) : misses >= 2;
+  if (outOfTries) {
+    hideChoices();
+    round.push('miss');
+    renderStars();
+    revealAnswer();
+    retryQueue.push({ q: { ...q }, due: asked + RETRY_AFTER });
+    const said = revealSentence(q);
+    setMessage(`${said[0].toUpperCase() + said.slice(1)}. Let's try another one!`, 'var(--bad)');
+    await say(`${said}. Let's try another one!`);
+    await next(0);
+  } else if (isReading(q) && misses === 2) {
+    await giveHint();
+  } else {
+    const forQ = q;
+    setMessage('Hmm, not quite. Try again!', 'var(--bad)');
+    await say('Not quite. Try again!');
+    // "Try again" never contains an answer, so listen again almost right away.
+    if (phase === 'feedback') toListen(forQ, 300);
+  }
+}
+
+// Record how this question went and move the level if needed. Returns 'up', 'down' or null.
+function adapt(points) {
+  levelScores.push(points);
+  streak = points === 1 ? streak + 1 : 0;
+  const avg = k => { const s = levelScores.slice(-k); return s.reduce((a, b) => a + b, 0) / s.length; };
+  const n = levelScores.length;
+  const top = levelList().length - 1;
+  if (level() < top && (streak >= UP_STREAK || (n >= UP_WINDOW && avg(UP_WINDOW) >= UP_AVG))) {
+    setLevel(mode, level() + 1);
+    return 'up';
+  }
+  if (level() > 0 && n >= 3 && avg(DOWN_WINDOW) < DOWN_AVG) {
+    setLevel(mode, level() - 1);
+    return 'down';
+  }
+  return null;
+}
+
+async function next(points) {
+  phase = 'feedback';
+  pauseMic();
+  const beforeKind = levelList()[level()].kind;
+  const change = adapt(points);
+  if (change === 'up') {
+    confetti(80);
+    const nowKind = levelList()[level()].kind;
+    const text = beforeKind !== nowKind
+      ? { add: "Level up! Now let's try adding!", word: "Level up! Now let's read some words!" }[nowKind] || 'Level up!'
+      : 'Level up! You are getting so good at this!';
+    setMessage('🎉 ' + text, 'var(--accent)');
+    await say(text);
+  } else if (change === 'down') {
+    setMessage("Let's practice some easier ones.", 'var(--accent)');
+    await say("Let's practice some easier ones.");
+  }
+  if (round.length >= ROUND_LENGTH) return finish();
+  q = makeQuestion();
+  showCard();
+}
+
+async function start(m) {
+  await holdMic();
+  mode = m;
+  round = []; score = 0; q = null;
+  streak = 0; levelScores = []; asked = 0; retryQueue = []; recentKeys = [];
+  renderStars();
+  renderLevel();
+  $('overlay').classList.remove('show');
+  gameActive = true;
+  startMic();
+  q = makeQuestion();
+  showCard();
+}
+
+function finish() {
+  gameActive = false; // from a file the mic stays on so playing again doesn't ask again
+  phase = 'idle';
+  pauseMic();
+  hideChoices();
+  clearTimeout(idleTimer);
+  showHeard('');
+  $('ovTitle').textContent = score >= 8 ? '🎉 Amazing job! 🎉' : score >= 5 ? '🎉 Great work! 🎉' : '🎉 Good try! 🎉';
+  $('bigStars').textContent = '★'.repeat(score);
+  $('ovText').textContent = `You got ${score} out of ${ROUND_LENGTH} stars! Play again?`;
+  $('ovNote').textContent = '';
+  renderLevel();
+  $('overlay').classList.add('show');
+  confetti(80);
+  say(`You got ${score} stars! ${score >= 5 ? 'Great work!' : 'Good try!'}`);
+}
+
+function confetti(count = 40) {
+  const box = $('confetti');
+  for (let i = 0; i < count; i++) {
+    const b = document.createElement('b');
+    b.style.left = Math.random() * 100 + 'vw';
+    b.style.background = COLORS[i % COLORS.length];
+    b.style.animationDelay = Math.random() * 0.5 + 's';
+    b.style.animationDuration = 1.2 + Math.random() * 1 + 's';
+    box.appendChild(b);
+    setTimeout(() => b.remove(), 3000);
+  }
+}
+
+// ---------- wiring ----------
+$('startMath').onclick = () => start('math');
+$('startRead').onclick = () => start('read');
+$('mic').onclick = async () => { await holdMic(); if (!micOn) startMic(); };
+$('pYes').onclick = () => { if (gameActive && (phase === 'prompt' || phase === 'listen')) correct(); };
+$('pNo').onclick = () => { if (gameActive && (phase === 'prompt' || phase === 'listen')) wrong(); };
+$('pSkip').onclick = () => {
+  if (!gameActive) return;
+  speechSynthesis.cancel();
+  q = makeQuestion();
+  showCard();
+};
+$('gear').onclick = () => $('settings').classList.toggle('show');
+$('optDots').onchange = () => { if (q) showDots(q); };
+$('optHeard').onchange = () => $('heard').classList.toggle('hidden', !$('optHeard').checked);
+document.querySelectorAll('#settings [data-mode]').forEach(btn => {
+  btn.onclick = () => {
+    const m = btn.dataset.mode;
+    setLevel(m, levels[m] + Number(btn.dataset.step));
+    if (gameActive && m === mode && (phase === 'prompt' || phase === 'listen')) { q = makeQuestion(); showCard(); }
+  };
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#settings, #gear')) $('settings').classList.remove('show');
+});
+
+$('voiceSel').onchange = () => {
+  voice = voices.find(v => v.voiceURI === $('voiceSel').value) || voice;
+  try { localStorage.setItem('flashcards-voice', voice.voiceURI); } catch (_) {}
+  say('Hi! What letter is this?');
+};
+$('voiceTest').onclick = () => say('Hi! What letter is this?');
+
+loadVoices();
+renderLevel();
+renderStars();
+if (!SR) {
+  $('ovNote').textContent = "Heads up: this browser can't listen for speech. Open this page in Google Chrome, or use the grown-up ✓ / ✗ buttons.";
+  $('mic').disabled = true;
+}
+</script>
+</body>
+</html>
