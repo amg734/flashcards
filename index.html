@@ -620,6 +620,36 @@ function updateMic() {
 const SHORT_SESSIONS = location.protocol === 'https:' || location.hostname === 'localhost';
 let micStarting = false;
 
+// Newer Chrome can recognize speech on the device itself and be told which answers to expect,
+// which is much better at single letters and numbers. Use it when it's there; skip it if not.
+let localSpeech = false, phrasesOK = true;
+async function prepareLocalSpeech() {
+  try {
+    if (!SR || typeof SR.available !== 'function') return;
+    const opts = { langs: ['en-US'], processLocally: true };
+    const status = await SR.available(opts);
+    if (status === 'available') localSpeech = true;
+    else if (status === 'downloadable' && typeof SR.install === 'function') {
+      SR.install(opts).then(ok => { if (ok) localSpeech = true; }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+// The answers that make sense for this card, so Chrome listens for those words.
+function expectedPhrases(x) {
+  if (!x) return [];
+  if (x.kind === 'number' || x.kind === 'add') return NAMES.slice(1);
+  const L = MODES.read.levels.find(l => l.items.includes(x.answer));
+  return L ? L.items.map(a => x.kind === 'letter' ? a.toUpperCase() : a) : [x.answer];
+}
+
+function tuneRecognizer(r) {
+  if (localSpeech) { try { r.processLocally = true; } catch (_) {} }
+  if (phrasesOK && typeof window.SpeechRecognitionPhrase === 'function' && 'phrases' in r) {
+    try { r.phrases = expectedPhrases(q).map(p => new SpeechRecognitionPhrase(p, 5)); } catch (_) {}
+  }
+}
+
 const wantsMic = () => gameActive && (phase === 'prompt' || phase === 'listen');
 function ensureMic() { if (wantsMic()) startMic(); }
 function pauseMic() {
@@ -635,6 +665,7 @@ function startMic() {
   rec.interimResults = true;
   rec.maxAlternatives = 5;
   rec.continuous = !SHORT_SESSIONS;
+  tuneRecognizer(rec);
 
   rec.onstart = () => {
     micStarting = false; micOn = true; lastStart = Date.now(); consumed = -1; skipWords = {};
@@ -658,6 +689,9 @@ function startMic() {
     }
   };
   rec.onerror = e => {
+    // If the newer recognition options aren't supported after all, drop them and carry on.
+    if (e.error === 'phrases-not-supported') { phrasesOK = false; return; }
+    if (localSpeech && (e.error === 'language-not-supported' || e.error === 'service-not-allowed')) { localSpeech = false; return; }
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       micBlocked = true;
       setMessage('Please allow the microphone, then tap the button.');
@@ -861,11 +895,37 @@ function showCard() {
   askAloud();
 }
 
-function askAloud() {
+// The question is only spoken on the first card (and for adding problems, or when she's gone
+// quiet). Otherwise a quick chime says "go", so she isn't talking over the app's voice,
+// which made Chrome mishear her.
+let spokeFirstPrompt = false, audioCtx = null;
+
+function chime() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    [660, 880].forEach((f, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + i * 0.09);
+      g.gain.exponentialRampToValueAtTime(0.15, t + i * 0.09 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.09 + 0.16);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t + i * 0.09); o.stop(t + i * 0.09 + 0.18);
+    });
+  } catch (_) {}
+  return pause(250);
+}
+
+function askAloud(speak) {
   phase = 'prompt';
-  ensureMic();
   const asking = q;
-  say(promptFor(q)).then(() => { if (phase === 'prompt' && q === asking) toListen(asking, 0); });
+  const spoken = speak || !spokeFirstPrompt || q.kind === 'add';
+  spokeFirstPrompt = true;
+  // While the app talks, the mic waits (from a web address); with just a chime it's on right away.
+  if (spoken) pauseMic(); else ensureMic();
+  (spoken ? say(promptFor(q)) : chime())
+    .then(() => { if (phase === 'prompt' && q === asking) toListen(asking, 0); });
 }
 
 // Start listening for an answer. After feedback or a hint, wait a moment so the
@@ -952,7 +1012,7 @@ async function onIdle(forQ) {
   if (phase !== 'listen' || q !== forQ || idleCount >= 3) return;
   idleCount++;
   if ((q.kind === 'letter' || q.kind === 'word') && !hinted) await giveHint();
-  else askAloud();
+  else askAloud(true);
 }
 
 function revealAnswer() {
@@ -1101,7 +1161,10 @@ async function next(points) {
 }
 
 async function start(m) {
+  prepareLocalSpeech(); // needs the tap that started the game, so it goes first
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (_) {}
   await holdMic();
+  spokeFirstPrompt = false;
   mode = m;
   round = []; score = 0; q = null;
   streak = 0; levelScores = []; asked = 0; retryQueue = []; recentKeys = [];
@@ -1109,9 +1172,8 @@ async function start(m) {
   renderLevel();
   $('overlay').classList.remove('show');
   gameActive = true;
-  startMic();
   q = makeQuestion();
-  showCard();
+  showCard(); // starts the mic once the card (and its expected answers) are ready
 }
 
 function finish() {
